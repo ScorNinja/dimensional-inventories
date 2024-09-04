@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "dimensional-inventories-gametest",
+  "name": "Dimensional Inventories Game Test",
+  "version": "${version}",
+
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "net.thomilist.dimensionalinventories.gametest.DimensionPoolTransitionHandlerTest",
+      "net.thomilist.dimensionalinventories.gametest.LogHelperTest",
+      "net.thomilist.dimensionalinventories.gametest.LogThrottlerTest"
+    ]
+  },
+  "mixins": [
+    "dimensional-inventories-gametest.mixins.json",
+    {
+      "config": "dimensional-inventories-gametest.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}

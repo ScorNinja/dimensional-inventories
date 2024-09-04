@@ -1,7 +1,7 @@
 package net.thomilist.dimensionalinventories.lostandfound;
 
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.thomilist.dimensionalinventories.DimensionalInventoriesMod;
+import net.thomilist.dimensionalinventories.DimensionalInventories;
 import net.thomilist.dimensionalinventories.module.base.Module;
 import net.thomilist.dimensionalinventories.module.builtin.pool.DimensionPool;
 import net.thomilist.dimensionalinventories.util.LogHelper;
@@ -50,7 +50,7 @@ public class LostAndFoundContext
     {
         if (!scopes.isEmpty())
         {
-            scopes.remove(scopes.size() - 1);
+            scopes.removeLast();
         }
     }
 
@@ -62,7 +62,7 @@ public class LostAndFoundContext
 
     public LostAndFoundScope head()
     {
-        return scopes.isEmpty() ? null : scopes.get(scopes.size() - 1);
+        return scopes.isEmpty() ? null : scopes.getLast();
     }
 
     public Collection<LostAndFoundScope> scopes()
@@ -96,21 +96,21 @@ public class LostAndFoundContext
         return switch (specialObjects.size())
         {
             case 1 -> SavePaths.lostAndFoundDirectory(
-                DimensionalInventoriesMod.STORAGE_VERSION,
+                DimensionalInventories.INSTANCE.storageVersion,
                 (DimensionPool) specialObjects.get(0)
             );
             case 2 -> SavePaths.lostAndFoundDirectory(
-                DimensionalInventoriesMod.STORAGE_VERSION,
+                DimensionalInventories.INSTANCE.storageVersion,
                 (DimensionPool) specialObjects.get(0),
                 (ServerPlayerEntity) specialObjects.get(1)
             );
             case 3 -> SavePaths.lostAndFoundDirectory(
-                DimensionalInventoriesMod.STORAGE_VERSION,
+                DimensionalInventories.INSTANCE.storageVersion,
                 (DimensionPool) specialObjects.get(0),
                 (ServerPlayerEntity) specialObjects.get(1),
                 (Module) specialObjects.get(2)
             );
-            default -> SavePaths.lostAndFoundDirectory(DimensionalInventoriesMod.STORAGE_VERSION);
+            default -> SavePaths.lostAndFoundDirectory(DimensionalInventories.INSTANCE.storageVersion);
         };
     }
 

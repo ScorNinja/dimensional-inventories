@@ -2,39 +2,53 @@ package net.thomilist.dimensionalinventories.module.builtin.pool;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.Clearable;
+import net.thomilist.dimensionalinventories.DimensionalInventories;
+import net.thomilist.dimensionalinventories.module.ModuleRegistry;
+import net.thomilist.dimensionalinventories.module.base.config.ConfigModule;
 import net.thomilist.dimensionalinventories.module.version.StorageVersion;
-import net.thomilist.dimensionalinventories.DimensionalInventoriesMod;
 import net.thomilist.dimensionalinventories.module.base.player.PlayerModule;
 
 import java.util.Optional;
 
 public class DimensionPoolTransitionHandler
 {
-    public static void loadToPlayer(StorageVersion storageVersion, DimensionPool dimensionPool, ServerPlayerEntity player)
+    private final StorageVersion storageVersion;
+    private final ModuleRegistry<ConfigModule> configModules;
+    private final ModuleRegistry<PlayerModule> playerModules;
+
+    public DimensionPoolTransitionHandler(StorageVersion storageVersion, ModuleRegistry<ConfigModule> configModules, ModuleRegistry<PlayerModule> playerModules)
     {
-        if (DimensionalInventoriesMod.PLAYER_MODULES.has(storageVersion))
+        this.storageVersion = storageVersion;
+        this.configModules = configModules;
+        this.playerModules = playerModules;
+    }
+
+    public void loadToPlayer(StorageVersion storageVersion, DimensionPool dimensionPool, ServerPlayerEntity player)
+    {
+        if (playerModules.has(storageVersion))
         {
-            for (PlayerModule module : DimensionalInventoriesMod.PLAYER_MODULES.get(storageVersion))
+            for (PlayerModule module : playerModules.get(storageVersion))
             {
                 module.loadWithContext(player, dimensionPool);
             }
         }
     }
 
-    public static void saveFromPlayer(StorageVersion storageVersion, DimensionPool dimensionPool, ServerPlayerEntity player)
+    public void saveFromPlayer(StorageVersion storageVersion, DimensionPool dimensionPool, ServerPlayerEntity player)
     {
-        if (DimensionalInventoriesMod.PLAYER_MODULES.has(storageVersion))
+        if (playerModules.has(storageVersion))
         {
-            for (PlayerModule module : DimensionalInventoriesMod.PLAYER_MODULES.get(storageVersion))
+            for (PlayerModule module : playerModules.get(storageVersion))
             {
                 module.saveWithContext(player, dimensionPool);
             }
         }
     }
 
-    public static void handlePlayerDimensionChange(ServerPlayerEntity player, String originDimensionName, String destinationDimensionName)
+    public void handlePlayerDimensionChange(ServerPlayerEntity player, String originDimensionName, String destinationDimensionName)
     {
-        DimensionalInventoriesMod.LOGGER.debug(
+        DimensionalInventories.LOGGER.debug(
             "Player '{}' ({}) travelled from {} to {}.",
             player.getName().getString(),
             player.getUuidAsString(),
@@ -42,20 +56,22 @@ public class DimensionPoolTransitionHandler
             destinationDimensionName
         );
 
-        if (DimensionPoolConfigModule.STATE.dimensionsAreInSamePool(originDimensionName, destinationDimensionName))
+        DimensionPoolConfigModule dimensionPoolConfig = configModules.get(DimensionPoolConfigModule.class);
+
+        if (dimensionPoolConfig.state().dimensionsAreInSamePool(originDimensionName, destinationDimensionName))
         {
-            DimensionalInventoriesMod.LOGGER.debug("The origin and destination dimensions are in the same pool. Player unaffected.");
+            DimensionalInventories.LOGGER.debug("The origin and destination dimensions are in the same pool. Player unaffected.");
         }
         else
         {
-            DimensionalInventoriesMod.LOGGER.debug("The origin and destination dimensions are in different pools. Switching inventories...");
+            DimensionalInventories.LOGGER.debug("The origin and destination dimensions are in different pools. Switching inventories...");
 
-            Optional<DimensionPool> originDimensionPool = DimensionPoolConfigModule.STATE.poolWithDimension(originDimensionName);
-            Optional<DimensionPool> destinationDimensionPool = DimensionPoolConfigModule.STATE.poolWithDimension(destinationDimensionName);
+            Optional<DimensionPool> originDimensionPool = dimensionPoolConfig.state().poolWithDimension(originDimensionName);
+            Optional<DimensionPool> destinationDimensionPool = dimensionPoolConfig.state().poolWithDimension(destinationDimensionName);
 
             if (originDimensionPool.isEmpty() || destinationDimensionPool.isEmpty())
             {
-                DimensionalInventoriesMod.LOGGER.warn(
+                DimensionalInventories.LOGGER.warn(
                     "Not all dimensions are assigned to a dimension pool. Player '{}' unaffected ({} -> {}).",
                     player.getName().getString(),
                     originDimensionName,
@@ -64,30 +80,32 @@ public class DimensionPoolTransitionHandler
                 return;
             }
 
-            DimensionPoolTransitionHandler.saveFromPlayer(DimensionalInventoriesMod.STORAGE_VERSION, originDimensionPool.get(), player);
-            DimensionPoolTransitionHandler.loadToPlayer(DimensionalInventoriesMod.STORAGE_VERSION, destinationDimensionPool.get(), player);
+            saveFromPlayer(storageVersion, originDimensionPool.get(), player);
+            loadToPlayer(storageVersion, destinationDimensionPool.get(), player);
         }
     }
 
-    public static void handleEntityDimensionChange(Entity newEntity, String originDimensionName, String destinationDimensionName)
+    public void handleEntityDimensionChange(Entity newEntity, String originDimensionName, String destinationDimensionName)
     {
-        if (!DimensionPoolConfigModule.STATE.dimensionsAreInSamePool(originDimensionName, destinationDimensionName))
+        DimensionPoolConfigModule dimensionPoolConfig = configModules.get(DimensionPoolConfigModule.class);
+
+        if (!dimensionPoolConfig.state().dimensionsAreInSamePool(originDimensionName, destinationDimensionName))
         {
-            DimensionalInventoriesMod.LOGGER.debug(
+            DimensionalInventories.LOGGER.debug(
                 "Entity '{}' travelled from {} to {}.",
                 newEntity.getName().getString(),
                 originDimensionName,
                 destinationDimensionName
             );
 
-            DimensionalInventoriesMod.LOGGER.debug("The origin and destination dimensions are in different pools. Deleting entity...");
+            DimensionalInventories.LOGGER.debug("The origin and destination dimensions are in different pools. Deleting entity...");
 
-            Optional<DimensionPool> originDimension = DimensionPoolConfigModule.STATE.poolWithDimension(originDimensionName);
-            Optional<DimensionPool> destinationDimension = DimensionPoolConfigModule.STATE.poolWithDimension(destinationDimensionName);
+            Optional<DimensionPool> originDimension = dimensionPoolConfig.state().poolWithDimension(originDimensionName);
+            Optional<DimensionPool> destinationDimension = dimensionPoolConfig.state().poolWithDimension(destinationDimensionName);
 
             if (originDimension.isEmpty() || destinationDimension.isEmpty())
             {
-                DimensionalInventoriesMod.LOGGER.warn(
+                DimensionalInventories.LOGGER.warn(
                     "Not all dimensions are assigned a dimension pool. Entity '{}' unaffected ({} -> {}).",
                     newEntity.getName().getString(),
                     originDimensionName,
@@ -95,6 +113,11 @@ public class DimensionPoolTransitionHandler
                 );
 
                 return;
+            }
+
+            if (newEntity instanceof Clearable)
+            {
+                ((Clearable) newEntity).clear();
             }
 
             newEntity.discard();

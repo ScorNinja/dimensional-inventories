@@ -21,41 +21,59 @@ import net.thomilist.dimensionalinventories.module.builtin.gamemode.GameModeModu
 import net.thomilist.dimensionalinventories.module.builtin.inventory.InventoryModule;
 import net.thomilist.dimensionalinventories.module.builtin.status.StatusModule;
 import net.thomilist.dimensionalinventories.module.builtin.pool.DimensionPoolTransitionHandler;
+import net.thomilist.dimensionalinventories.util.NbtConversionHelper;
+import net.thomilist.dimensionalinventories.util.Properties;
 import net.thomilist.dimensionalinventories.util.SavePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DimensionalInventoriesMod
+public class DimensionalInventories
 	implements ModInitializer
 {
-	public static final Logger LOGGER = LoggerFactory.getLogger("DimensionalInventories");
-	public static final String MOD_VERSION = "@MOD_VERSION@";
-	public static final StorageVersion STORAGE_VERSION = StorageVersion.V2;
-	public static final ModuleRegistry<ConfigModule> CONFIG_MODULES = new ModuleRegistry<>(ConfigModule.class);
-	public static final ModuleRegistry<PlayerModule> PLAYER_MODULES = new ModuleRegistry<>(PlayerModule.class);
+	public static final Logger LOGGER = LoggerFactory.getLogger(Properties.modNamePascal());
+	public static final DimensionalInventories INSTANCE = new DimensionalInventories();
+
+	public final StorageVersion storageVersion;
+	public final StorageVersionMigration storageVersionMigration;
+	public final ModuleRegistry<ConfigModule> configModules = new ModuleRegistry<>(ConfigModule.class);
+	public final ModuleRegistry<PlayerModule> playerModules = new ModuleRegistry<>(PlayerModule.class);
+	public final DimensionPoolTransitionHandler transitionHandler;
+	public final Commands commands = new Commands();
+
+	public DimensionalInventories(StorageVersion storageVersion)
+	{
+		this.storageVersion = storageVersion;
+		this.transitionHandler = new DimensionPoolTransitionHandler(this.storageVersion, this.configModules, this.playerModules);
+		this.storageVersionMigration = new StorageVersionMigration(this.storageVersion, this.configModules, this.transitionHandler);
+	}
+
+	public DimensionalInventories()
+	{
+		this(StorageVersion.V2);
+	}
 
 	@Override
 	public void onInitialize()
 	{
 		try (var LAF = LostAndFound.init("init"))
 		{
-			DimensionalInventoriesMod.registerModules();
-			DimensionalInventoriesMod.registerStartupHandlers();
-			DimensionalInventoriesMod.registerPlayerTravelHandler();
-			DimensionalInventoriesMod.registerPlayerRespawnHandler();
-			DimensionalInventoriesMod.registerEntityTravelHandler();
-			DimensionalInventoriesMod.registerCommands();
+			DimensionalInventories.INSTANCE.registerBuiltinModules();
+			DimensionalInventories.INSTANCE.registerStartupHandlers();
+			DimensionalInventories.INSTANCE.registerPlayerTravelHandler();
+			DimensionalInventories.INSTANCE.registerPlayerRespawnHandler();
+			DimensionalInventories.INSTANCE.registerEntityTravelHandler();
+			DimensionalInventories.INSTANCE.registerCommands();
 		}
 	}
 
-	public static void registerModules(ModuleGroup modules)
+	public void registerModules(ModuleGroup modules)
 	{
-		DimensionalInventoriesMod.CONFIG_MODULES.register(modules);
-		DimensionalInventoriesMod.PLAYER_MODULES.register(modules);
+		configModules.register(modules);
+		playerModules.register(modules);
 	}
 
 	@SuppressWarnings("deprecation")
-	private static void registerModules()
+	public void registerBuiltinModules()
 	{
 		ModuleGroup modules = ModuleGroup.create("main")
 			.add
@@ -108,30 +126,32 @@ public class DimensionalInventoriesMod
 				"Health, hunger, experience & score."
 			);
 
-		DimensionalInventoriesMod.registerModules(modules);
+		registerModules(modules);
 	}
 
-	private static void registerStartupHandlers()
+	private void registerStartupHandlers()
 	{
 		ServerLifecycleEvents.SERVER_STARTED.register((server) ->
 		{
 			try (var LAF = LostAndFound.init("server started"))
 			{
+				NbtConversionHelper.onServerStarted(server);
 				SavePaths.onServerStarted(server);
-				StorageVersionMigration.onServerStarted(server);
+				storageVersionMigration.tryMigrate(server);
 
-				for (var config : DimensionalInventoriesMod.CONFIG_MODULES.get(StorageVersion.latest()))
+				for (var config : configModules.get(StorageVersion.latest()))
 				{
 					config.loadWithContext();
 				}
 
-				DimensionalInventoriesMod.LOGGER.info("Dimensional Inventories {} initialised",
-					DimensionalInventoriesMod.MOD_VERSION);
+				DimensionalInventories.LOGGER.info("{} {} initialised",
+					Properties.modNamePretty(),
+					Properties.modVersion());
 			}
 		});
 	}
 
-	private static void registerPlayerTravelHandler()
+	private void registerPlayerTravelHandler()
 	{
 		ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) ->
 		{
@@ -140,7 +160,7 @@ public class DimensionalInventoriesMod
 				String originDimensionName = origin.getRegistryKey().getValue().toString();
 				String destinationDimensionName = destination.getRegistryKey().getValue().toString();
 
-				DimensionPoolTransitionHandler.handlePlayerDimensionChange(
+				transitionHandler.handlePlayerDimensionChange(
 					player,
 					originDimensionName,
 					destinationDimensionName);
@@ -148,7 +168,7 @@ public class DimensionalInventoriesMod
 		});
 	}
 
-	private static void registerPlayerRespawnHandler()
+	private void registerPlayerRespawnHandler()
 	{
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
 		{
@@ -157,7 +177,7 @@ public class DimensionalInventoriesMod
 				String originDimensionName = oldPlayer.getWorld().getRegistryKey().getValue().toString();
 				String destinationDimensionName = newPlayer.getWorld().getRegistryKey().getValue().toString();
 
-				DimensionPoolTransitionHandler.handlePlayerDimensionChange(
+				transitionHandler.handlePlayerDimensionChange(
 					newPlayer,
 					originDimensionName,
 					destinationDimensionName);
@@ -165,7 +185,7 @@ public class DimensionalInventoriesMod
 		});
 	}
 
-	private static void registerEntityTravelHandler()
+	private void registerEntityTravelHandler()
 	{
 		ServerEntityWorldChangeEvents.AFTER_ENTITY_CHANGE_WORLD.register((originalEntity, newEntity, origin, destination) ->
 		{
@@ -174,7 +194,7 @@ public class DimensionalInventoriesMod
 				String originDimensionName = origin.getRegistryKey().getValue().toString();
 				String destinationDimensionName = destination.getRegistryKey().getValue().toString();
 
-				DimensionPoolTransitionHandler.handleEntityDimensionChange(
+				transitionHandler.handleEntityDimensionChange(
 					newEntity,
 					originDimensionName,
 					destinationDimensionName);
@@ -182,8 +202,14 @@ public class DimensionalInventoriesMod
 		});
 	}
 
-	private static void registerCommands()
+	private void registerCommands()
 	{
-		Commands.register();
+		for (var module : configModules.get(storageVersion))
+		{
+			if (module instanceof DimensionPoolConfigModule)
+			{
+				commands.register((DimensionPoolConfigModule) module);
+			}
+		}
 	}
 }
